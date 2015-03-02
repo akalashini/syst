@@ -16,10 +16,10 @@ splstr <- function(s, delim = ',')
 
 isnone <- function(var) {
   # if var is a non-valid object then return true, such as NA,NULL,FALSE
-  if (len(var) == 0)
+  if (length(var) == 0)
     return(TRUE)
-  if (len(var) == 1) {
-    if(is.na(var) || is.null(var) || var == FALSE || var == 0) {
+  if (length(var) == 1) {
+    if(is.na(var) || is.null(var) || var == FALSE) {
       return(TRUE)
     } else {
       return(FALSE)
@@ -34,6 +34,14 @@ iif <- function (cond, truepart, falsepart) {
   return(ifelse(isnone(cond), falsepart, truepart))
 }
   
+p.force.be.matrix <- function( var, byrow = TRUE ) {
+  # force a var to be a matirx
+  if(!is.null(dim(var))) { return(var) }
+  else {
+    if(byrow) { return(matrix(var, 1, length(var), byrow=TRUE)) }
+    else { return(matrix(var, length(var), 1, byrow=FALSE)) }    
+  }
+}
 #### constraints utils ####
 # here is how the structure of a constraint look like
 # $n     : num of variables
@@ -50,26 +58,30 @@ p.reorg.constraints <- function
   const.mat,
   const.dir,
   const.rhs
-)
-{
+) {
   # let the first constraints to be "=", the rest to be ">=", to comply wiht QP package
-  # TESTED
+  # [TESTED]
   
-  if (is.null(dim(const.mat))) dim(const.mat) <- c(1, len(const.mat))
+  if (is.null(dim(const.mat))) dim(const.mat) <- c(1, length(const.mat))
   
   # get constraints with "=" first
   meq   <- sum(const.dir == "=")
-  mineq <- len(const.dir) - meq
+  mineq <- length(const.dir) - meq
   
-  eq.const.mat <- const.mat[const.dir == "=", ]
+  # for QP, need to convert constraint to >= mode
+  #lt.mat.tm <- const.mat[const.dir == "<=", ]
+  const.mat[const.dir == "<=", ] <- p.force.be.matrix(- const.mat[const.dir == "<=", ])
+  const.rhs[const.dir == "<="]   <- - const.rhs[const.dir == "<="]
+  
+  eq.const.mat <- p.force.be.matrix(const.mat[const.dir == "=", ])
   eq.const.rhs <- const.rhs[const.dir == "="]
   
-  ineq.const.mat <- const.mat[!(const.dir == "="), ]
+  ineq.const.mat <- p.force.be.matrix(const.mat[!(const.dir == "="), ])
   ineq.const.rhs <- const.rhs[!(const.dir == "=")]
   
   # for QP, need to convert constraint to >= mode
-  ineq.const.mat[dir == "<=", ] <- - ineq.const.mat[dir == "<=", ]
-  ineq.const.rhs[dir == "<="] <- - ineq.const.rhs[dir == "<="]
+  #ineq.const.mat[dir == "<=", ] <- p.force.be.matrix(- ineq.const.mat[const.dir == "<=", ])
+  #ineq.const.rhs[dir == "<="] <- - ineq.const.rhs[dir == "<="]
   
   anew.mat <- rbind(eq.const.mat, ineq.const.mat)
   anew.dir <- c(rep("=", meq), rep(">=", mineq))
@@ -80,35 +92,38 @@ p.reorg.constraints <- function
 }
 
 
-# create.new.constraints <- function
-# (
-#   n,              # n variables
-#   const.mat   = NULL,
-#   const.dir   = NULL,
-#   const.rhs   = NULL,
-#   lb = NA,
-#   ub = NA
-# )
-# {
-#   meq <- 0
-#   if ( isnone(const.mat) || isnone(const.rhs) ) {
-#     const.mat <- matrix(0, 0, n)
-#     const.rhs <- c()
-#   } else {
-#     if ( is.null(dim(const.mat)) ) dim(const.mat) = c(1, len(const.mat))
-#    
-#     # get constraints with "=" first
-#     
-#     # for QP, need to convert constraint to >= mode
-#     const.mat[dir == "<=",] <- - const.mat[dir == "<=",]
-#     const.rhs[dir == "<=",] <- - const.rhs[dir == "<=",]
-#   }
-#   if ( is.null(lb) || is.na(lb) ) lb = rep(NA, n)
-#   if ( len(lb) != n ) lb = rep(lb[1], n)
-#   if ( is.null(ub) || is.na(ub) ) ub = rep(NA, n)
-#   if ( len(ub) != n ) ub = rep(ub[1], n)
-#   return( list(n = n, A = A, b = b, meq = meq, lb = lb, ub = ub) )
-# }
+create.new.constraints <- function
+(
+  n,                # n variables
+  const.mat = NULL, # matrix
+  const.dir = NULL, # =, <=, >=
+  const.rhs = NULL, # b
+  lb = NA,
+  ub = NA
+)
+{
+  meq <- 0
+  if ( is.null(const.mat) || is.null(const.rhs) ) {
+    const.mat <- matrix(0, 0, n)
+    const.rhs <- c()
+  } else {
+    if ( is.null(dim(const.mat)) ) dim(const.mat) = c(1, length(const.mat))
+   
+    # re-organize the constraints
+    const.reorg <- p.reorg.constraints(const.mat, const.dir, const.rhs)
+    const.mat <- const.reorg$mat
+    const.dir <- const.reorg$dir
+    const.rhs <- const.reorg$rhs
+    meq       <- const.reorg$meq
+  }
+  if (isnone(lb))   lb <- rep(NA, n)
+  if (length(lb) == 1) lb <- rep(lb[1], n)
+  if (isnone(ub))   ub <- rep(NA, n)
+  if (length(ub) == 1) ub <- rep(ub[1], n)
+  
+  return( list(n = n, mat = const.mat, dir = const.dir, rhs = const.rhs, lb = lb, ub = ub, meq = meq) )
+}
+
 # add.constraints <- function
 # (
 #   A,
@@ -119,11 +134,11 @@ p.reorg.constraints <- function
 # {
 #   if(is.null(constraints)) constraints = new.constraints(n = nrow(A))
 #   if(is.null(dim(A))) A = matrix(A)
-#   if(len(b) == 1) b = rep(b, ncol(A))
+#   if(length(b) == 1) b = rep(b, ncol(A))
 #   if ( type[1] == '=' ) {
 #     constraints$A = cbind( A, constraints$A )
 #     constraints$b = c( b, constraints$b )
-#     constraints$meq = constraints$meq + len(b)
+#     constraints$meq = constraints$meq + length(b)
 #   }
 #   if ( type[1] == '>=' ) {
 #     constraints$A = cbind( constraints$A, A )
@@ -143,11 +158,11 @@ p.reorg.constraints <- function
 #   ub = NA
 # )
 # {
-#   constraints$A = rbind( constraints$A, matrix(0, n, len(constraints$b)) )
+#   constraints$A = rbind( constraints$A, matrix(0, n, length(constraints$b)) )
 #   if ( is.null(lb) || is.na(lb) ) lb = rep(NA, n)
-#   if ( len(lb) != n ) lb = rep(lb[1], n)
+#   if ( length(lb) != n ) lb = rep(lb[1], n)
 #   if ( is.null(ub) || is.na(ub) ) ub = rep(NA, n)
-#   if ( len(ub) != n ) ub = rep(ub[1], n)
+#   if ( length(ub) != n ) ub = rep(ub[1], n)
 #   constraints$lb = c(constraints$lb, lb)
 #   constraints$ub = c(constraints$ub, ub)
 #   constraints$n = constraints$n + n
@@ -161,7 +176,7 @@ p.reorg.constraints <- function
 # {
 #   constraints$A = constraints$A[, -delete.index, drop=F]
 #   constraints$b = constraints$b[ -delete.index]
-#   constraints$meq = constraints$meq - len(intersect((1:constraints$meq), delete.index))
+#   constraints$meq = constraints$meq - length(intersect((1:constraints$meq), delete.index))
 #   return( constraints )
 # }
 ####
@@ -186,7 +201,7 @@ optimize.LP <- function
   # linear programming tool with bounds and binary
   # a wrapper on lpSolveAPI, so requires package lpSolveAPI
   
-  n <- len(objective.vec)
+  n <- length(objective.vec)
   iDim <- dim(const.mat) 
   m <- iDim[1]
   # n variables, m rows of constraints
@@ -221,12 +236,12 @@ optimize.LP <- function
   
   # set bounds  
   if(!isnone(lb.vec)) {
-    if(len(lb) == 1) lb = rep(lb, len(lb.vec))
+    if(length(lb) == 1) lb = rep(lb, length(lb.vec))
     set.bounds(lprec, lower = lb, columns = lb.vec)
   }
   
   if(!isnone(ub.vec)) {
-    if(len(ub) == 1) ub = rep(ub, len(ub.vec))
+    if(length(ub) == 1) ub = rep(ub, length(ub.vec))
     set.bounds(lprec, lower = ub, columns = ub.vec)
   }
  
@@ -269,7 +284,7 @@ lp.obj.portfolio <- function
   if(!is.null(constraints$binary.index)) binary.vec = constraints$binary.index
   sol = try(solve.LP.bounds(direction, f.obj,
                             t(constraints$A),
-                            c(rep('=', constraints$meq), rep('>=', len(constraints$b) - constraints$meq)),
+                            c(rep('=', constraints$meq), rep('>=', length(constraints$b) - constraints$meq)),
                             constraints$b, lb = constraints$lb, ub = constraints$ub, binary.vec = binary.vec), TRUE)
   if(!inherits(sol, 'try-error')) {
     x = sol$solution
@@ -329,7 +344,7 @@ lp.obj.portfolio <- function
 #   constraints = add.constraints(c(ia$expected.return, rep(0, nrow(constraints$A) - ia$n)),
 #                                 target[1], type = '>=', constraints)
 #   for(i in 2:(nportfolios - 1) ) {
-#     constraints$b[ len(constraints$b) ] = target[i]
+#     constraints$b[ length(constraints$b) ] = target[i]
 #     out$weight[i, ] = match.fun(min.risk.fn)(ia, constraints)
 #     constraints$x0 = out$weight[i, ]
 #   }
@@ -337,7 +352,7 @@ lp.obj.portfolio <- function
 #     out$risk = portfolio.risk(out$weight, ia)
 #     temp = diff(out$risk)
 #     index = which(temp >= median(temp) + mad(temp))
-#     if( len(index) > 0 ) {
+#     if( length(index) > 0 ) {
 #       index = min(index)
 #       proper.spacing = ceiling((out$risk[nportfolios] - out$risk[index])/temp[(index-1)])-1
 #       nportfolios1 = proper.spacing + 2
@@ -348,13 +363,13 @@ lp.obj.portfolio <- function
 #         target = temp$y[ which(temp$y > out$return[index] & temp$y < out$return[nportfolios] &
 #                                  temp$x > out$risk[index] & temp$x < out$risk[nportfolios])]
 #         target = c(out$return[index], target, out$return[nportfolios])
-#         nportfolios1 = len(target)
+#         nportfolios1 = length(target)
 #         out1 = list(weight = matrix(NA, nportfolios1, nrow(constraints$A)))
 #         out1$weight[1, ] = out$weight[index, ]
 #         out1$weight[nportfolios1, ] = out$weight[nportfolios, ]
 #         constraints$x0 = out1$weight[1, ]
 #         for(i in 2:(nportfolios1 - 1) ) {
-#           constraints$b[ len(constraints$b) ] = target[i]
+#           constraints$b[ length(constraints$b) ] = target[i]
 #           out1$weight[i, ] = match.fun(min.risk.fn)(ia, constraints)
 #           constraints$x0 = out1$weight[i, ]
 #         }
