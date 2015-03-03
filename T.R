@@ -19,7 +19,7 @@ isnone <- function(var) {
   if (length(var) == 0)
     return(TRUE)
   if (length(var) == 1) {
-    if(is.na(var) || is.null(var) || var == FALSE) {
+    if(is.na(var) || is.null(var)) {
       return(TRUE)
     } else {
       return(FALSE)
@@ -98,13 +98,14 @@ create.new.constraints <- function
   const.mat = NULL, # matrix
   const.dir = NULL, # =, <=, >=
   const.rhs = NULL, # b
-  lb = NA,
-  ub = NA
+  lb = 0,
+  ub = +Inf
 )
 {
   meq <- 0
   if ( is.null(const.mat) || is.null(const.rhs) ) {
     const.mat <- matrix(0, 0, n)
+    const.dir <- c()
     const.rhs <- c()
   } else {
     if ( is.null(dim(const.mat)) ) dim(const.mat) = c(1, length(const.mat))
@@ -118,67 +119,72 @@ create.new.constraints <- function
   }
   if (isnone(lb))   lb <- rep(NA, n)
   if (length(lb) == 1) lb <- rep(lb[1], n)
-  if (isnone(ub))   ub <- rep(NA, n)
+  if (isnone(ub))   ub <- rep(+Inf, n)
   if (length(ub) == 1) ub <- rep(ub[1], n)
   
   return( list(n = n, mat = const.mat, dir = const.dir, rhs = const.rhs, lb = lb, ub = ub, meq = meq) )
 }
 
-# add.constraints <- function
-# (
-#   A,
-#   b,
-#   type = c('=', '>=', '<='),
-#   constraints
-# )
-# {
-#   if(is.null(constraints)) constraints = new.constraints(n = nrow(A))
-#   if(is.null(dim(A))) A = matrix(A)
-#   if(length(b) == 1) b = rep(b, ncol(A))
-#   if ( type[1] == '=' ) {
-#     constraints$A = cbind( A, constraints$A )
-#     constraints$b = c( b, constraints$b )
-#     constraints$meq = constraints$meq + length(b)
-#   }
-#   if ( type[1] == '>=' ) {
-#     constraints$A = cbind( constraints$A, A )
-#     constraints$b = c( constraints$b, b )
-#   }
-#   if ( type[1] == '<=' ) {
-#     constraints$A = cbind( constraints$A, -A )
-#     constraints$b = c( constraints$b, -b )
-#   }
-#   return( constraints )
-# }
-# add.variables <- function
-# (
-#   n,
-#   constraints,
-#   lb = NA,
-#   ub = NA
-# )
-# {
-#   constraints$A = rbind( constraints$A, matrix(0, n, length(constraints$b)) )
-#   if ( is.null(lb) || is.na(lb) ) lb = rep(NA, n)
-#   if ( length(lb) != n ) lb = rep(lb[1], n)
-#   if ( is.null(ub) || is.na(ub) ) ub = rep(NA, n)
-#   if ( length(ub) != n ) ub = rep(ub[1], n)
-#   constraints$lb = c(constraints$lb, lb)
-#   constraints$ub = c(constraints$ub, ub)
-#   constraints$n = constraints$n + n
-#   return( constraints )
-# }
-# delete.constraints <- function
-# (
-#   delete.index,
-#   constraints
-# )
-# {
-#   constraints$A = constraints$A[, -delete.index, drop=F]
-#   constraints$b = constraints$b[ -delete.index]
-#   constraints$meq = constraints$meq - length(intersect((1:constraints$meq), delete.index))
-#   return( constraints )
-# }
+####
+add.constraints <- function
+(
+  const.mat,
+  const.dir,
+  const.rhs,
+  constraints
+)
+{
+  # add constraints to existing constraints
+  
+  if(is.null(constraints)) constraints <- create.new.constraints(n = ncol(const.mat))
+  
+  if(is.null(dim(const.mat))) const.mat <- p.force.be.matrix(const.mat)
+  if(length(const.dir) == 1) const.dir <- rep(const.dir, nrow(const.mat))
+  if(length(const.rhs) == 1) const.rhs <- rep(const.rhs, nrow(const.mat))
+ 
+  constraints$mat <- rbind( const.mat, constraints$mat )
+  constraints$dir <- c( const.dir, constraints$dir )
+  constraints$rhs <- c( const.rhs, constraints$rhs )
+  
+  newConst <- p.reorg.constraints(constraints$mat, constraints$dir, constraints$rhs)
+  constraints[c("mat", "dir", "rhs", "meq")] <- newConst
+  
+  return(constraints)
+}
+
+####
+add.variables <- function
+(
+  n,
+  constraints,
+  lb = NA,
+  ub = NA
+)
+{
+  # add n variables to constraints already exists
+  constraints$mat <- cbind( constraints$mat, matrix(0, nrow(constraints$mat), n, byrow=TRUE) )
+  if (isnone(lb)) lb <- rep(NA, n)
+  if (length(lb) != n) lb <- rep(lb[1], n)
+  if (isnone(ub)) ub <- rep(NA, n)
+  if (length(ub) != n) ub = rep(ub[1], n)
+  constraints$lb <- c(constraints$lb, lb)
+  constraints$ub <- c(constraints$ub, ub)
+  constraints$n <- constraints$n + n
+  return( constraints )
+}
+
+####
+delete.constraints <- function
+(
+  delete.index,
+  constraints
+)
+{
+  constraints$mat = constraints$mat[-delete.index, , drop=F]
+  constraints$rhs = constraints$rhs[-delete.index]
+  constraints$meq = constraints$meq - length(intersect((1:constraints$meq), delete.index))
+  return( constraints )
+}
 ####
 #### END constraint utils
 
