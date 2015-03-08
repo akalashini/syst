@@ -2,7 +2,8 @@
 
 MinMaxLossPortfolio <- function
 (
-  inp 
+  inp,
+  constraints
 ) {
   # max-loss defined as max_1<j<T { - sum(r_ij * xi) }
   # i: the ith asset
@@ -53,27 +54,32 @@ MinMaxLossPortfolio <- function
 #  
 #}
 
-runTest_001 <- function(){
+sampledata <- function(){
   # tst run
   require(quantmod)
   
-  symbols <- spl('SPY,QQQ,EEM,IWM,EFA,TLT,IYR,GLD')
+  symbols      <- spl('SPY,QQQ,EEM,IWM,EFA,TLT,IYR,GLD')
    
   load('./data/asset_allocation_001.RData')   
-  hist.prices <- merge(SPY,QQQ,EEM,IWM,EFA,TLT,IYR,GLD)
+  hist.prices  <- merge(SPY,QQQ,EEM,IWM,EFA,TLT,IYR,GLD)
   
-  month.ends <- endpoints(hist.prices, 'months')
-  hist.prices <- Cl(hist.prices)[month.ends, ]
+  month.ends   <- endpoints(hist.prices, 'months')
+  hist.prices  <- Cl(hist.prices)[month.ends, ]
   colnames(hist.prices) <- symbols
-  hist.prices <- na.omit( hist.prices['1995:2014'])
+  hist.prices  <- na.omit( hist.prices['1995:2014'])
   
   hist.returns <- na.omit( ROC(hist.prices, type = 'discrete'))
   
-  inp <- list()
+  inp   <- list()
   inp$n <- len(symbols)
-  inp$hist.returns <- hist.returns
+  inp$hist.returns    <- hist.returns
+  inp$expected.return <- apply(hist.returns, 2, mean, na.rm = TRUE)
+  inp$risk <- apply(hist.returns, 2, sd, na.rm = TRUE)
   
-  sol <- MinMaxLossPortfolio( inp )
-  return(sol)
+  inp$expected.return <- 12 * inp$expected.return
+  inp$risk <- sqrt(12) * inp$risk
+  
+  #sol <- MinMaxLossPortfolio( inp )
+  return(inp)
   
 }

@@ -7,33 +7,51 @@
 ##################################################################################
 # some convenient functions
 ##################################################################################
-
+##
 splstr <- function(s, delim = ',')
 {
   # split a string and return a vector
   return(unlist(strsplit(s,delim)))
 }
 
+##
 isnone <- function(var) {
   # if var is a non-valid object then return true, such as NA,NULL,FALSE
   if (length(var) == 0)
     return(TRUE)
   if (length(var) == 1) {
-    if(is.na(var) || is.null(var)) {
+    if(is.na(var) || is.nan(var)) {
       return(TRUE)
-    } else {
-      return(FALSE)
-    }
-  } else {
-    return(FALSE)
-  }
+    }  
+  } 
+  return(FALSE)
 }
 
+##
 iif <- function (cond, truepart, falsepart) {
   # if cond is TRUE then return true part else return falsepart
   return(ifelse(isnone(cond), falsepart, truepart))
 }
-  
+
+##
+load.packages <- function(
+  packages,
+  repos = "http://cran.r-project.org",
+  dependencies = c("Depends", "Imports"),
+  ...
+) {
+  packages = splstr(packages)
+  for( ipackage in packages ) {
+    if(!require(ipackage, quietly=TRUE, character.only = TRUE)) {
+      install.packages(ipackage, repos=repos, dependencies=dependencies, ...)
+      if(!require(ipackage, quietly=TRUE, character.only = TRUE)) {
+        stop("package", sQuote(ipackage), 'is needed.  Stopping')
+      }
+    }
+  }
+}
+
+##
 p.force.be.matrix <- function( var, byrow = TRUE ) {
   # force a var to be a matirx
   if(!is.null(dim(var))) { return(var) }
@@ -42,6 +60,7 @@ p.force.be.matrix <- function( var, byrow = TRUE ) {
     else { return(matrix(var, length(var), 1, byrow=FALSE)) }    
   }
 }
+
 #### constraints utils ####
 # here is how the structure of a constraint look like
 # $n     : num of variables
@@ -51,8 +70,10 @@ p.force.be.matrix <- function( var, byrow = TRUE ) {
 # $meq   : first #meq of constraints are "=", need by QP, thought no need for LP
 # $lb    : lower bounds of variables
 # $ub    : upper bounds of variables
-
+# $lb.vec: vector for variables that have lower bounds
+# $ub.vec: vector for variables that have upper bounds
 ####
+
 p.reorg.constraints <- function 
 (
   const.mat,
@@ -99,7 +120,9 @@ create.new.constraints <- function
   const.dir = NULL, # =, <=, >=
   const.rhs = NULL, # b
   lb = 0,
+  lb.vec = NULL,
   ub = +Inf,
+  ub.vec = NULL,
   binary.vec  = NULL, # indices of which var is binary
   integer.vec = NULL  # indices of which var is integer
 )
@@ -275,8 +298,28 @@ optimize.LP <- function
   rm(lprec)
   
   return(rst)
-} #END solve.LP
+} #END optimize.LP
 
+
+optimize.LP.wrap <- function
+(
+  direction,          # "min" or "max"
+  objective.vec,      # objective function
+  constraints         # constraint list  
+) {
+  sol <- optimize.LP(  
+                     direction,            
+                     objective.vec,        
+                     constraint$mat,     
+                     constraint$dir,     
+                     constraint$rhs,     
+                     constraint$binary.vec,
+                     constraint$integer.vec,
+                     constraint$lb,
+                     constraint$lb.vec,  
+                     constraint$ub,     
+                     constraint$ub.vec )
+}
 
 #### max/min return portfolio
 lp.obj.portfolio <- function
@@ -302,8 +345,46 @@ lp.obj.portfolio <- function
   return( x )
 }
 
+#### max return portfolio
+max.return.portfolio <- function(
+  inp,
+  constraints
+  ) {
+  return( lp.obj.portfolio(inp, constraints, 'max') )
+}
+
+### portfolio utils
+portfolio.weighted.return <- function
+(
+  weight,
+  inp
+)
+{
+  if(is.null(dim(weight))) dim(weight) = c(1, len(weight))
+  weight <- weight[, 1:inp$n, drop=F]
+  portfolio.return <- weight %*% inp$expected.return
+  return( portfolio.return )
+}
+
+#### portfolio risk
+portfolio.std.risk <- function(
+  weight,
+  inp
+){
+  if(is.null(dim(weight))) dim(weight) = c(1, length(weight))
+  weight = weight[, 1:inp$n, drop=F]
+  cov = inp$cov[1:inp$n, 1:inp$n]
+  return( apply(weight, 1, function(x) sqrt(t(x) %*% cov %*% x)) )
+}
+
 
 #### generat efficient portfolio frontier
+# inp is a list with the following structure
+#   : n
+#   : symbols
+#   : expected.returns
+#   : risk
+#   : 
 efficient.port.gen <- function( 
   
   inp, 
@@ -314,90 +395,60 @@ efficient.port.gen <- function(
   )
 {
   # first find max return portfolio
-  
-  const.mat,           # constraint matrix, each row is a constraint
-  const.dir,           # direction, "=", ">=" "<=" etc
-  const.rhs,           # rhs
-  binary.vec  = NA,    # index of which vars are binary
-  integer.vec = NA,    # index of which vars are integers
-  lb     = 0,          # lower bound
-  lb.vec = NA,         # what vars to set lower bound
-  ub     = +Inf,       # upper bound
-  ub.vec = NA    
-  
-
-#load.packages('quadprog,corpcor,lpSolve,kernlab')
-if( is.null(constraints) ) {
-  constraints <- create.new.constraints( inp$n )
-}
-
-inp$risk <- ifelse(inp$risk == 0, 0.000001, inp$risk)
-if( is.null(inp$cov) ) inp$cov = inp$corr * (inp$risk %*% t(inp$risk))
-inp$cov.temp = inp$cov
-n0 <- inp$n
-n  <- ncol(constraints$mat)
-if( n != ncol(inp$cov.temp) ) {
-  temp =  matrix(0, n, n)
-  temp[1:n0, 1:n0] = inp$cov.temp[1:n0, 1:n0]
-  inp$cov.temp = temp
-}
-
-if(!is.positive.definite(inp$cov.temp, method = 'chol')) {
-  inp$cov.temp <- make.positive.definite(inp$cov.temp, 0.000000001)
-}
-
-if(npoints<2) npoints = 2
-
-out = list(weight = matrix(NA, npoints, nrow(constraints$A)))
-colnames(out$weight) = rep('', ncol(out$weight))
-colnames(out$weight)[1:ia$n] = ia$symbols
-out$weight[npoints, ] = max.return.portfolio(ia, constraints)
-out$weight[1, ] = match.fun(min.risk.fn)(ia, constraints)
-constraints$x0 = out$weight[1, ]
-if(npoints > 2) {
-  out$return = portfolio.return(out$weight, ia)
-  target = seq(out$return[1], out$return[npoints], length.out = npoints)
-  constraints = add.constraints(c(ia$expected.return, rep(0, nrow(constraints$A) - ia$n)),
-                                target[1], type = '>=', constraints)
-  for(i in 2:(npoints - 1) ) {
-    constraints$b[ length(constraints$b) ] = target[i]
-    out$weight[i, ] = match.fun(min.risk.fn)(ia, constraints)
-    constraints$x0 = out$weight[i, ]
+   
+  load.packages('quadprog,corpcor,lpSolve,kernlab')
+  if( is.null(constraints) ) {
+    constraints <- create.new.constraints( inp$n )
   }
-  if( equally.spaced.risk ) {
-    out$risk = portfolio.risk(out$weight, ia)
-    temp = diff(out$risk)
-    index = which(temp >= median(temp) + mad(temp))
-    if( length(index) > 0 ) {
-      index = min(index)
-      proper.spacing = ceiling((out$risk[npoints] - out$risk[index])/temp[(index-1)])-1
-      nportfolios1 = proper.spacing + 2
-      if(nportfolios1 > 2) {
-        out$return = portfolio.return(out$weight, ia)
-        out$risk = portfolio.risk(out$weight, ia)
-        temp = spline(out$risk, out$return, n = npoints, method = 'natural')
-        target = temp$y[ which(temp$y > out$return[index] & temp$y < out$return[npoints] &
-                                 temp$x > out$risk[index] & temp$x < out$risk[npoints])]
-        target = c(out$return[index], target, out$return[npoints])
-        nportfolios1 = length(target)
-        out1 = list(weight = matrix(NA, nportfolios1, nrow(constraints$A)))
-        out1$weight[1, ] = out$weight[index, ]
-        out1$weight[nportfolios1, ] = out$weight[npoints, ]
-        constraints$x0 = out1$weight[1, ]
-        for(i in 2:(nportfolios1 - 1) ) {
-          constraints$b[ length(constraints$b) ] = target[i]
-          out1$weight[i, ] = match.fun(min.risk.fn)(ia, constraints)
-          constraints$x0 = out1$weight[i, ]
-        }
-        out$weight = rbind(out$weight[-c(index:npoints),], out1$weight)
-      }
+  
+  inp$risk <- ifelse(inp$risk == 0, 0.000001, inp$risk)
+  if( is.null(inp$cov) ) inp$cov <- inp$corr * (inp$risk %*% t(inp$risk))
+  inp$cov.temp <- inp$cov
+  n0 <- inp$n
+  n  <- ncol(constraints$mat)
+  if( n != ncol(inp$cov.temp) ) {
+    temp <- matrix(0, n, n)
+    temp[1:n0, 1:n0] <- inp$cov.temp[1:n0, 1:n0]
+    inp$cov.temp <- temp
+  }
+  
+  if(!is.positive.definite(inp$cov.temp, method = 'chol')) {
+    inp$cov.temp <- make.positive.definite(inp$cov.temp, 0.000000001)
+  }
+  
+  if(npoints<2) npoints <- 2
+
+  # results saved in out
+  out <- list(weight = matrix(NA, npoints, ncol(constraints$mat)))
+  
+  colnames(out$weight)          <- rep('', ncol(out$weight))
+  colnames(out$weight)[1:inp$n] <- inp$symbols
+  
+  # get portfolio with max return
+  out$weight[npoints, ] <- max.return.portfolio(inp, constraints)
+  # get portfolio with min risk
+  out$weight[1, ]       <- match.fun(min.risk.fn)(inp, constraints)
+  
+  #constraints$x0 = out$weight[1, ]
+  if(npoints > 2) {
+    out$return  <- portfolio.weighted.return(out$weight, ia)
+    target      <- seq(out$return[1], out$return[npoints], length.out = npoints)
+    #base.constr <- add.constraints(c(inp$expected.return, rep(0, ncol(constraints$mat) - inp$n)),
+    #                              '', target[1], constraints)
+    for(i in 2:(npoints - 1) ) {
+      iconstr <- add.constraints(c(inp$expected.return, rep(0, ncol(constraints$mat) - inp$n)),
+                                     '=', target[i], constraints)
+      #constraints$b[ length(constraints$b) ] = target[i]
+      out$weight[i, ] = match.fun(min.risk.fn)(inp, iconstr)
+      #constraints$x0 = out$weight[i, ]
     }
+         
   }
-}
-rm.index = is.na(rowSums(out$weight))
-if(any(rm.index)) out$weight = out$weight[!rm.index,]
-out$return = portfolio.return(out$weight, ia)
-out$risk = portfolio.risk(out$weight, ia)
-out$name = name
-return(out)
+  
+  rm.index <- is.na(apply(out$weight, 1, sum))
+  if(any(rm.index)) out$weight <- out$weight[!rm.index, ]
+  out$return <- portfolio.weighted.return(out$weight, inp)
+  out$risk   <- portfolio.std.risk(out$weight, inp)
+  out$name   <- name
+  return(out)
 }
