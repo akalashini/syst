@@ -132,6 +132,7 @@ create.new.constraints <- function
     const.mat <- matrix(0, 0, n, byrow = TRUE)
     const.dir <- c()
     const.rhs <- c()
+    meq       <- 0
   } else {
     if ( is.null(dim(const.mat)) ) dim(const.mat) = c(1, length(const.mat))
    
@@ -142,12 +143,18 @@ create.new.constraints <- function
     const.rhs <- const.reorg$rhs
     meq       <- const.reorg$meq
   }
-  if (isnone(lb))   lb <- rep(NA, n)
-  if (length(lb) == 1) lb <- rep(lb[1], n)
-  if (isnone(ub))   ub <- rep(+Inf, n)
-  if (length(ub) == 1) ub <- rep(ub[1], n)
+  if (isnone(lb)) {
+    lb <- rep(NA, n)
+  } else if (length(lb) == 1) {
+    lb <- rep(lb[1], n)
+  }
+  if (isnone(ub)) {
+    ub <- rep(+Inf, n)
+  } else if (length(ub) == 1) {
+    ub <- rep(ub[1], n)
+  }
   
-  return( list(n = n, mat = const.mat, dir = const.dir, rhs = const.rhs, lb = lb, ub = ub, meq = meq, binary.vec = binary.vec, integer.vec = integer.vec) )
+  return( list(n = n, mat = const.mat, dir = const.dir, rhs = const.rhs, lb = lb, ub = ub, meq = meq, binary.vec = binary.vec, integer.vec = integer.vec, lb.vec = lb.vec, ub.vec = ub.vec ) )
 }
 
 ####
@@ -183,15 +190,26 @@ add.variables <- function
   n,
   constraints,
   lb = NA,
-  ub = NA
+  ub = NA,
+  lb.vec = NULL,
+  ub.vec = NULL,
+  binary.vec = NULL,
+  integer.vec = NULL
 )
 {
   # add n variables to constraints already exists
   constraints$mat <- cbind( constraints$mat, matrix(0, nrow(constraints$mat), n, byrow=TRUE) )
-  if (isnone(lb)) lb <- rep(NA, n)
-  if (length(lb) != n) lb <- rep(lb[1], n)
-  if (isnone(ub)) ub <- rep(NA, n)
-  if (length(ub) != n) ub = rep(ub[1], n)
+  if (isnone(lb))  { lb <- rep(NA, n) } else {
+  if (length(lb) != n) lb <- rep(lb[1], n) }
+  
+  if (isnone(ub)) { ub <- rep(NA, n) } else {
+  if (length(ub) != n) ub = rep(ub[1], n) }
+  
+  if (!isnone(lb.vec)) constraints$lb.vec <- c(constraints$lb.vec, lb.vec)
+  if (!isnone(ub.vec)) constraints$ub.vec <- c(constraints$ub.vec, ub.vec)
+  if (!isnone(binary.vec)) constraints$binary.vec <- c(constraints$binary.vec, binary.vec)
+  if (!isnone(integer.vec)) constraints$integer.vec <- c(constraints$integer.vec, integer.vec)
+  
   constraints$lb <- c(constraints$lb, lb)
   constraints$ub <- c(constraints$ub, ub)
   constraints$n <- constraints$n + n

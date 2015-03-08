@@ -57,3 +57,36 @@ test_p.reorg.constraints <- function()
   checkEquals( target, rst )
 }
 
+test_add.constraints <- function()
+{
+  mat <- matrix( c(1,1,1,2,2,2,3,3,3,4,4,4), 4,3, byrow=TRUE)  
+  rhs <- c(1,2,3,4)  
+  dir <- c("<=","=",">=","<=")
+  constr <- create.new.constraints( 3, mat, dir, rhs )
+  
+  mat1 <- matrix(c(5,5,5,6,6,6), 2,3, byrow=TRUE)
+  dir1 <- c("<=","=")
+  rhs1 <- c(5,6)
+  
+  const1 <- add.constraints( mat1, dir1, rhs1, constr )
+  
+  target <- list()
+  target$mat <- matrix( c(6,6,6,2,2,2,-5,-5,-5,-1,-1,-1,3,3,3,-4,-4,-4), 6,3, byrow=TRUE)
+  target$dir <- c("=", "=", ">=", ">=", ">=", ">=")
+  target$rhs <- c(6, 2, -5, -1, 3, -4)
+  target$meq <- 2
+  checkEquals( target, const1[c("mat","dir","rhs","meq")] )
+  
+  const2  <- add.variables(2, const1, lb=c(101,102), ub=c(1001,1002))
+  target2 <- list()
+  target2$n   <- 5
+  target2$mat <- matrix( c(6,6,6,0,0,2,2,2,0,0,-5,-5,-5,0,0,-1,-1,-1,0,0,3,3,3,0,0,-4,-4,-4,0,0), 6,5, byrow=TRUE)
+  target2$dir <- c("=", "=", ">=", ">=", ">=", ">=")
+  target2$rhs <- c(6, 2, -5, -1, 3, -4)
+  target2$meq <- 2
+  target2$lb  <- c(0,0,0,101,102)
+  target2$ub  <- c(Inf,Inf,Inf,1001,1002)
+  checkEquals( target2, const2[c("n","mat","dir","rhs","meq","lb","ub")] )
+  
+}
+
