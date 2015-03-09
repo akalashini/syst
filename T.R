@@ -167,13 +167,12 @@ add.constraints <- function
 )
 {
   # add constraints to existing constraints
-  
-  if(is.null(constraints)) constraints <- create.new.constraints(n = ncol(const.mat))
-  
   if(is.null(dim(const.mat))) const.mat <- p.force.be.matrix(const.mat)
   if(length(const.dir) == 1) const.dir <- rep(const.dir, nrow(const.mat))
   if(length(const.rhs) == 1) const.rhs <- rep(const.rhs, nrow(const.mat))
- 
+  
+  if(is.null(constraints)) constraints <- create.new.constraints(n = ncol(const.mat))
+  
   constraints$mat <- rbind( const.mat, constraints$mat )
   constraints$dir <- c( const.dir, constraints$dir )
   constraints$rhs <- c( const.rhs, constraints$rhs )
@@ -199,10 +198,10 @@ add.variables <- function
 {
   # add n variables to constraints already exists
   constraints$mat <- cbind( constraints$mat, matrix(0, nrow(constraints$mat), n, byrow=TRUE) )
-  if (isnone(lb))  { lb <- rep(NA, n) } else {
+  if (isnone(lb))  { lb <- rep(-Inf, n) } else {
   if (length(lb) != n) lb <- rep(lb[1], n) }
   
-  if (isnone(ub)) { ub <- rep(NA, n) } else {
+  if (isnone(ub)) { ub <- rep(+Inf, n) } else {
   if (length(ub) != n) ub = rep(ub[1], n) }
   
   if (!isnone(lb.vec)) constraints$lb.vec <- c(constraints$lb.vec, lb.vec)
@@ -285,21 +284,37 @@ optimize.LP <- function
   
   # set bounds  
   if(!isnone(lb.vec)) {
-    if(length(lb) == 1) lb = rep(lb, length(lb.vec))
-    set.bounds(lprec, lower = lb, columns = lb.vec)
+    if(length(lb) == 1) lb <- rep(lb, length(lb.vec))    
+  } else {
+    if(length(lb) == 1) {
+      lb <- req(lb[1], n)      
+    }
+    else { 
+      lb <- NULL
+    }    
+    lb.vec <- seq(1,n)
   }
   
   if(!isnone(ub.vec)) {
-    if(length(ub) == 1) ub = rep(ub, length(ub.vec))
-    set.bounds(lprec, lower = ub, columns = ub.vec)
+    if(length(ub) == 1) ub <- rep(ub, length(ub.vec))    
+  } else {
+    if(length(ub) == 1) {
+      ub <- req(ub[1], n)      
+    }
+    else { 
+      ub <- NULL
+    }    
+    ub.vec <- seq(1,n)
   }
- 
+  
+  set.bounds(lprec, lower = lb, upper = ub, columns = lb.vec)
+  
   # ready to optimize
   print(lprec)
   
   status <- solve(lprec)
   if(status==0) {
-    cat("LP Optimizing Successful.\n")
+    cat("**LP Optimizing Successful.\n")
   } else {
     cat("LP Optimizing Failed.\n")
     rm(lprec)
@@ -328,15 +343,15 @@ optimize.LP.wrap <- function
   sol <- optimize.LP(  
                      direction,            
                      objective.vec,        
-                     constraint$mat,     
-                     constraint$dir,     
-                     constraint$rhs,     
-                     constraint$binary.vec,
-                     constraint$integer.vec,
-                     constraint$lb,
-                     constraint$lb.vec,  
-                     constraint$ub,     
-                     constraint$ub.vec )
+                     constraints$mat,     
+                     constraints$dir,     
+                     constraints$rhs,     
+                     constraints$binary.vec,
+                     constraints$integer.vec,
+                     constraints$lb,
+                     constraints$lb.vec,  
+                     constraints$ub,     
+                     constraints$ub.vec )
 }
 
 #### max/min return portfolio
