@@ -255,7 +255,7 @@ optimize.LP <- function
   # n variables, m rows of constraints
   
   lprec <- make.lp(m, n)
-  set.objfn(lprec, objective.vec)
+  
   lp.control(lprec, sense = direction)
   # set constraints
   for (i in 1:ncol(const.mat)) {
@@ -286,28 +286,39 @@ optimize.LP <- function
   if(!isnone(lb.vec)) {
     if(length(lb) == 1) lb <- rep(lb, length(lb.vec))    
   } else {
-    if(length(lb) == 1) {
-      lb <- req(lb[1], n)      
-    }
-    else { 
+    if(isnone(lb))
+    {      
       lb <- NULL
-    }    
-    lb.vec <- seq(1,n)
+      lb.vec <- NULL
+    } else if(length(lb) == 1) {
+      lb <- rep(lb[1], n)      
+      lb.vec <- seq(1,n)
+    } else if(isnone(lb.vec)) {
+      lb.vec <- seq(1,n)
+    } 
   }
   
   if(!isnone(ub.vec)) {
-    if(length(ub) == 1) ub <- rep(ub, length(ub.vec))    
+    if(length(ub) == 1) lb <- rep(ub, length(ub.vec))    
   } else {
-    if(length(ub) == 1) {
-      ub <- req(ub[1], n)      
-    }
-    else { 
+    if(isnone(ub))
+    {      
       ub <- NULL
-    }    
-    ub.vec <- seq(1,n)
+      ub.vec <- NULL
+    } else if(length(ub) == 1) {
+      ub <- rep(ub[1], n)      
+      ub.vec <- seq(1,n)
+    } else if(isnone(ub.vec)) {
+      ub.vec <- seq(1,n)
+    }
   }
   
   set.bounds(lprec, lower = lb, upper = ub, columns = lb.vec)
+  
+  # set objective function here
+  # do this in the last step b/c somehow if we do it at the first step then obj func gets 
+  # messed up due to maybe a bug somewhere
+  set.objfn(lprec, objective.vec)
   
   # ready to optimize
   print(lprec)
@@ -362,18 +373,11 @@ lp.obj.portfolio <- function
   direction = 'min'
 )
 {
-  x <- NA 
+  x     <- NA 
   f.obj <- c(inp$expected.return)
-  sol = try(optimize.LP(direction, f.obj,
-                            constraints$mat,
-                            constraints$dir,
-                            constraints$rhs, 
-                            lb = constraints$lb, 
-                            ub = constraints$ub,
-                            binary.vec  = constraints$binary.vec,
-                            integer.vec = constraints$integer.vec), TRUE)
+  sol   <- try(optimize.LP.wrap(direction, f.obj, constraints), FALSE)
   if(!inherits(sol, 'try-error')) {
-    x = sol$Sol
+    x <- sol$Sol
   }
   return( x )
 }
@@ -404,9 +408,9 @@ portfolio.std.risk <- function(
   weight,
   inp
 ){
-  if(is.null(dim(weight))) dim(weight) = c(1, length(weight))
-  weight = weight[, 1:inp$n, drop=F]
-  cov = inp$cov[1:inp$n, 1:inp$n]
+  if(is.null(dim(weight))) dim(weight) <- c(1, length(weight))
+  weight <- weight[, 1:inp$n, drop=F]
+  cov    <- inp$cov[1:inp$n, 1:inp$n]
   return( apply(weight, 1, function(x) sqrt(t(x) %*% cov %*% x)) )
 }
 

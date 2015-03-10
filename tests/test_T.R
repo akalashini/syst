@@ -90,3 +90,11 @@ test_add.constraints <- function()
   
 }
 
+test_max.return.portfolio <- function()
+{
+  load("./data//asset_return_risk.RData")
+  constr <- create.new.constraints( 8, rep(1,8), "=", 1., lb=0, ub=1)
+  wt <- max.return.portfolio( data, constr )
+  checkIdentical( wt, c(0,0,0,0,0,0,0,1))
+}
+
