@@ -299,7 +299,7 @@ optimize.LP <- function
   }
   
   if(!isnone(ub.vec)) {
-    if(length(ub) == 1) lb <- rep(ub, length(ub.vec))    
+    if(length(ub) == 1) ub <- rep(ub, length(ub.vec))    
   } else {
     if(isnone(ub))
     {      
@@ -400,7 +400,7 @@ portfolio.weighted.return <- function
   if(is.null(dim(weight))) dim(weight) = c(1, len(weight))
   weight <- weight[, 1:inp$n, drop=F]
   portfolio.return <- weight %*% inp$expected.return
-  return( portfolio.return )
+  return( c(portfolio.return) )
 }
 
 #### portfolio risk
@@ -464,11 +464,12 @@ efficient.port.gen <- function(
   # get portfolio with max return
   out$weight[npoints, ] <- max.return.portfolio(inp, constraints)
   # get portfolio with min risk
-  out$weight[1, ]       <- match.fun(min.risk.fn)(inp, constraints)
+  solMinRisk <- match.fun(min.risk.fn)(inp, constraints)
+  out$weight[1, ]       <- solMinRisk$Sol
   
   #constraints$x0 = out$weight[1, ]
   if(npoints > 2) {
-    out$return  <- portfolio.weighted.return(out$weight, ia)
+    out$return  <- portfolio.weighted.return(out$weight, inp)
     target      <- seq(out$return[1], out$return[npoints], length.out = npoints)
     #base.constr <- add.constraints(c(inp$expected.return, rep(0, ncol(constraints$mat) - inp$n)),
     #                              '', target[1], constraints)
@@ -476,7 +477,8 @@ efficient.port.gen <- function(
       iconstr <- add.constraints(c(inp$expected.return, rep(0, ncol(constraints$mat) - inp$n)),
                                      '=', target[i], constraints)
       #constraints$b[ length(constraints$b) ] = target[i]
-      out$weight[i, ] = match.fun(min.risk.fn)(inp, iconstr)
+      isolMinRisk <- match.fun(min.risk.fn)(inp, iconstr)
+      out$weight[i, ] <- isolMinRisk$Sol
       #constraints$x0 = out$weight[i, ]
     }
          
@@ -488,4 +490,17 @@ efficient.port.gen <- function(
   out$risk   <- portfolio.std.risk(out$weight, inp)
   out$name   <- name
   return(out)
+} #### END efficient.port.gen
+
+#### efficient.port.plot
+efficient.port.plot <- function(
+  
+  inp, 
+  constraints,
+  min.risk.fn,  
+  name = 'Risk',
+  npoints = 25
+  )
+{
+  riskReturn <- efficient.port.
 }

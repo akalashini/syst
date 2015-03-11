@@ -29,8 +29,9 @@ MinMaxLossPortfolio <- function
   #cons.rhs <- rep(0, nt)
   
   # also the sum of weights = 1
-  wtConst <- rep(1, n)
-  constr  <- add.constraints( wtConst, "=", 1, constraints )
+  #wtConst <- rep(1, n)
+  #constr  <- add.constraints( wtConst, "=", 1, constraints )
+  constr <- constraints
   
   # constraint matirx
   # constraint for sum r_ij*xi + w >= 0
@@ -96,6 +97,8 @@ sampledata <- function(){
   inp$expected.return <- 12 * inp$expected.return
   inp$risk <- sqrt(12) * inp$risk
   
+  inp$corr <- cor(inp$hist.returns, use = 'complete.obs', method = 'pearson')
+  inp$cov  <- inp$corr * (inp$risk %*% t(inp$risk))
   #sol <- MinMaxLossPortfolio( inp )
   return(inp)
   

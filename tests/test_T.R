@@ -98,3 +98,12 @@ test_max.return.portfolio <- function()
   checkIdentical( wt, c(0,0,0,0,0,0,0,1))
 }
 
+test_efficient.port.gen <- function()
+{
+  load("./data//asset_return_risk.RData")
+  load("./data//TEST_RST.RData")
+  constr <- create.new.constraints( 8, rep(1,8), "=", 1., lb=0, ub=1)
+  rst <- efficient.port.gen( data, constr, MinMaxLossPortfolio,  "MinMasLoss")
+  checkEqualsNumeric( rst$return, TEST_RST$EffPort_MinMaxLoss$return, tolerance = 1E-4)
+  checkEqualsNumeric( rst$risk,   TEST_RST$EffPort_MinMaxLoss$risk,   tolerance = 1E-4)
+}
