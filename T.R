@@ -419,9 +419,10 @@ portfolio.std.risk <- function(
 # inp is a list with the following structure
 #   : n
 #   : symbols
-#   : expected.returns
-#   : risk
-#   : 
+#   : expected.return
+#   : cov
+#   : hist.returns
+
 efficient.port.gen <- function( 
   
   inp, 
@@ -492,15 +493,127 @@ efficient.port.gen <- function(
   return(out)
 } #### END efficient.port.gen
 
+
+###################################################################################
+######################## some plotting tools for portfolio ########################
+###################################################################################
+# tplot.legend <- function
+# (
+#   labels,
+#   fill = NULL,
+#   lastobs = NULL,
+#   x = 'topleft',
+#   merge = F,
+#   bty = 'n' 
+#   ...
+# )
+# {
+#   if( !is.null(fill) ) fill <- splstr( as.character(fill) )
+#   labels <- splstr( as.character(labels) )
+#    
+#   legend(x, legend = labels, fill = fill, merge = merge, bty = bty, ...)
+# }
+# 
+#### given limits, do a rescaling to make limits wider and make plot nicer
+p.rescale.limits <- function( limits ) {
+  scaleH <- 1.2
+  scaleL <- 0.8
+  ilim <- range(limits)
+  if( length(ilim) == 1 ) ilim <- rep(ilim[1], 2)
+  lowerLim  <- ilim[1]
+  higherLim <- ilim[2]
+  
+  lowerLim <- lowerLim * ifelse( lowerLim < 0, scaleH, scaleL )  
+  higherLim <- higherLim * ifelse( higherLim < 0, scaleL, scaleH )
+  
+  return( c(lowerLim, higherLim) )
+}
+
 #### efficient.port.plot
 efficient.port.plot <- function(
   
-  inp, 
-  constraints,
-  min.risk.fn,  
-  name = 'Risk',
-  npoints = 25
+  inp,                          # input data includes symbol,returns
+  eff.portfolios,               # a list of different efficient portfolios
+                                # each item must be a list with $weight $return 
+  portfolio.risk.fn = portfolio.std.risk # the function to calculate the risk defined here    
   )
 {
-  riskReturn <- efficient.port.
+  # plot the efficient frontier
+  
+  
+  scaleReturn <- 100
+  scaleRisk   <- 100
+  
+  n <- inp$n
+  x <- match.fun(portfolio.risk.fn)(diag(n), inp)
+  y <- inp$expected.return
+  
+  # xlim gives the range of risk of all portfolios including 0
+  xlim <- range(c(0, x,
+                 max( sapply(eff.portfolios, function(x) max(match.fun(portfolio.risk.fn)(x$weight,inp))) ) ), na.rm = T)
+  # ylim gives the range of return of all porfolios including 0
+  ylim <- range(c(0, y,
+                 min( sapply(eff.portfolios, function(x) min(portfolio.weighted.return(x$weight,inp))) ),
+                 max( sapply(eff.portfolios, function(x) max(portfolio.weighted.return(x$weight,inp))) ) ), na.rm = T)
+   
+  xlim <- scaleRisk * p.rescale.limits(xlim)
+  ylim <- scaleReturn * p.rescale.limits(ylim)
+   
+  y <- c()
+  x <- c()
+  name <- c()
+  
+  for(i in length(eff.portfolios):1) {
+    ef <- eff.portfolios[[ i ]]
+    ix  <- scaleRisk   * match.fun(portfolio.risk.fn)(ef$weight, inp)
+    iy  <- scaleReturn * ef$return
+    iname <- rep(ef$name, length(ix))
+    x <- c(x, ix)
+    y <- c(y, iy)
+    name <- c(name, iname)
+  }
+  dataToPlot <- data.frame( x, y, name )
+  assetPoints <- list(x=inp$risk * scaleRisk, y=inp$expected.return * scaleReturn, symbol=inp$symbols)
+   
+  xyplot(y~x, dataToPlot, groups=name, type="l", lwd=2, 
+         par.settings = list(axis.line = list(lwd = 2)), # set axis line width
+         factor = 5, 
+         scales = list(tck=c(1,0), x=list(font=2,cex=1.1,limits=xlim), y=list(font=2,cex=1.1,limits=ylim)), # axis font size and bold face
+         auto.key = list(points = F, lines = F, rectangles = T, columns=1 , space="inside",  x = .75, y=.9, corner = c(0,1), border = FALSE),  
+         xlab=list(label="Risk",fontsize=14, font=2),
+         ylab =list(label= "Return(%)",fontsize=14, font=2), 
+         panel = function(...) 
+           { panel.grid(); 
+             panel.xyplot(...); 
+             panel.points(x=assetPoints$x, y=assetPoints$y, type="p", pch=21, col="navy",fill="navy"); 
+             panel.text(x=assetPoints$x, y=assetPoints$y, labels=assetPoints$symbol, adj=c(1.25,1.25), col="red",cex=0.9,font=3)
+             } 
+         )
+} ## END eff.portfolio.plot
+
+####
+#plot.transitopn.map <- function(x,y,xlab = 'Risk',name = '',type=c('s','l')) {
+##  plot.transition.map(x,y,xlab,name,type)
+#}
+
+#### BEGIN plot transition map
+plot.transition.map <- function
+(
+  weight,
+  risk,
+  xlab = 'Risk',
+  name = '',
+  type=c('s','l'),
+  col = NA
+)
+{
+  if( is.list(weight) ) {
+    name <- weight$name
+    risk    <- 100 * weight$risk
+    weight    <- weight$weight
+  }
+  weight[is.na(weight)] <- 0
+  par(mar = c(4,3,2,1), cex = 0.8)
+  plota.stacked(risk, weight, xlab = xlab, main = paste('Transition Map for', name),
+                type=type[1], col=ifna(col, plota.colors(ncol(y))) )
 }
