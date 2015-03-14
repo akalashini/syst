@@ -535,7 +535,8 @@ efficient.port.plot <- function(
   inp,                          # input data includes symbol,returns
   eff.portfolios,               # a list of different efficient portfolios
                                 # each item must be a list with $weight $return 
-  portfolio.risk.fn = portfolio.std.risk # the function to calculate the risk defined here    
+  portfolio.risk.fn = portfolio.std.risk, # the function to calculate the risk defined here    
+  asset.points = TRUE           # whether plot the scattered asset risk-return points on the same plot
   )
 {
   # plot the efficient frontier
@@ -549,13 +550,16 @@ efficient.port.plot <- function(
   y <- inp$expected.return
   
   # xlim gives the range of risk of all portfolios including 0
-  xlim <- range(c(0, x,
-                 max( sapply(eff.portfolios, function(x) max(match.fun(portfolio.risk.fn)(x$weight,inp))) ) ), na.rm = T)
+  xlim <- range(c( min( sapply(eff.portfolios, function(x) min(match.fun(portfolio.risk.fn)(x$weight,inp))) ),
+                   max( sapply(eff.portfolios, function(x) max(match.fun(portfolio.risk.fn)(x$weight,inp))) ) ), na.rm = T)
   # ylim gives the range of return of all porfolios including 0
-  ylim <- range(c(0, y,
-                 min( sapply(eff.portfolios, function(x) min(portfolio.weighted.return(x$weight,inp))) ),
-                 max( sapply(eff.portfolios, function(x) max(portfolio.weighted.return(x$weight,inp))) ) ), na.rm = T)
-   
+  ylim <- range(c( min( sapply(eff.portfolios, function(x) min(portfolio.weighted.return(x$weight,inp))) ),
+                   max( sapply(eff.portfolios, function(x) max(portfolio.weighted.return(x$weight,inp))) ) ), na.rm = T)
+  if(asset.points) {
+    xlim <- range( c(xlim, x) )
+    ylim <- range( c(ylim, y) )
+  }
+    
   xlim <- scaleRisk * p.rescale.limits(xlim)
   ylim <- scaleReturn * p.rescale.limits(ylim)
    
@@ -585,8 +589,10 @@ efficient.port.plot <- function(
          panel = function(...) 
            { panel.grid(); 
              panel.xyplot(...); 
-             panel.points(x=assetPoints$x, y=assetPoints$y, type="p", pch=21, col="navy",fill="navy"); 
-             panel.text(x=assetPoints$x, y=assetPoints$y, labels=assetPoints$symbol, adj=c(1.25,1.25), col="red",cex=0.9,font=3)
+             if(asset.points ) {
+               panel.points(x=assetPoints$x, y=assetPoints$y, type="p", pch=21, col="navy",fill="navy"); 
+               panel.text(x=assetPoints$x, y=assetPoints$y, labels=assetPoints$symbol, adj=c(1.25,1.25), col="red",cex=0.9,font=3)
+             }
              } 
          )
 } ## END eff.portfolio.plot
