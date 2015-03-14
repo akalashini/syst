@@ -597,16 +597,126 @@ efficient.port.plot <- function(
          )
 } ## END eff.portfolio.plot
 
-####
-#plot.transitopn.map <- function(x,y,xlab = 'Risk',name = '',type=c('s','l')) {
-##  plot.transition.map(x,y,xlab,name,type)
-#}
+#### utils for transition map plotting
+## some helper functions
+p.tplot.format <- function(
+  temp,
+  nround = 2,
+  sprefix = '',
+  eprefix = ''
+)
+{
+  return( paste(sprefix,  format(round(as.numeric(temp), nround), big.mark = ',', scientific=FALSE),
+                eprefix ,sep='') )
+}
+
+p.tplot.colors <- function(N) {
+  col  <- rev(c('yellow','cyan','magenta','red','gray','green','blue'))
+  temp <- list()
+  for(j in 1:length(col)) {
+    temp[[j]] <- colors()[grep(col[j],colors())]
+    temp[[j]] <- temp[[j]][grep('^[^0-9]*$',temp[[j]])]
+    temp[[j]] <- temp[[j]][order(nchar(temp[[j]]))]
+    index <- which( colSums(col2rgb(temp[[j]])) < 100 )
+    if( length(index) > 0 ) temp[[j]] <- temp[[j]][-index]
+    index <- which( colSums(255 - col2rgb(temp[[j]])) < 100 )
+    if( length(index) > 0 ) temp[[j]] <- temp[[j]][-index]
+  }
+  index <- 1
+  col <- rep('', N)
+  for(i in 1:10) {
+    for(j in 1:length(temp)) {
+      if(length(temp[[j]]) >= i) {
+        col[index] <- temp[[j]][i]
+        index <- index + 1
+        if(index > N) break
+      }
+    }
+    if(index > N) break
+  }
+  return(col)
+}
+
+p.tplot.legend <- function
+(
+  labels,
+  fill = NULL,
+  lastobs = NULL,
+  x = 'topleft',
+  merge = F,
+  bty = 'n',
+  yformat = p.tplot.format,
+  ...
+)
+{
+  if( !is.null(fill) ) fill <- splstr( as.character(fill) )
+  labels <- splstr( as.character(labels) )
+  if( !is.null(lastobs) ) {
+    if( is.list(lastobs) ) {
+      labels1 <- sapply(lastobs, function(x) unclass(last(x))[1])
+    } else {
+      labels1 <- unclass(last(lastobs))[1];
+    }
+    labels <- paste(labels, match.fun(yformat)( labels1 ))
+  }
+  legend(x, legend = labels, fill = fill, merge = merge, bty = bty, ...)
+}
+
+## plot stacked graph
+p.tplot.stacked <- function
+(
+  x,
+  y,
+  xlab='',
+  col = p.tplot.colors(ncol(y)),
+  type=c('l','s'),
+  ...
+)
+{
+  y  <- 100 * y
+  x  <- 100 * x
+  y1 <- list()
+  y1$positive <- y
+  y1$positive[ y1$positive < 0 ] <- 0
+  y1$negative <- y
+  y1$negative[ y1$negative > 0 ] <- 0
+  ylim <- c(min(rowSums(y1$negative, na.rm = T)), max(1, rowSums(y1$positive, na.rm = T)))
+  if( class(x)[1] != 'Date' & class(x)[1] != 'POSIXct') {
+    plot(x, rep(0, length(x)), ylim = ylim, t = 'n', xlab = '', ylab = '', cex = par('cex'), ...)
+    grid()
+  } else {
+    #plota(make.xts(y[,1], x), ylim = ylim, cex = par('cex'), LeftMargin = 4, ...)
+    #axis(2, las = 1)
+    #x = unclass(as.POSIXct(x))
+  }
+  mtext('Allocation %', side = 2,line = 3, cex = par('cex'))
+  mtext(xlab, side = 1,line = 2, cex = par('cex'))
+  if( type[1] == 'l' ) {
+    prep.x = c(x[1], x, x[length(x)])
+    for( y in y1 ) {
+      for (i in ncol(y) : 1) {
+        prep.y = c(0, rowSums(y[, 1 : i, drop = FALSE]), 0)
+        polygon(prep.x, prep.y, col = col[i], border = NA, angle = 90)
+      }
+    }
+  } else {
+    dx = mean(diff(x))
+    prep.x = c(rep(x,each=2), x[length(x)] + dx, x[length(x)] + dx)
+    for( y in y1 ) {
+      for (i in ncol(y) : 1) {
+        prep.y = c(0, rep(rowSums(y[, 1 : i, drop = FALSE]),each=2), 0)
+        polygon(prep.x, prep.y, col = col[i], border = NA, angle = 90)
+      }
+    }
+  }
+  p.tplot.legend(colnames(y), col, cex = par('cex'))
+}
 
 #### BEGIN plot transition map
 plot.transition.map <- function
 (
-  weight,
-  risk,
+  weight,    # a matrix, each column is a asset, 
+  risk,      # a vector
   xlab = 'Risk',
   name = '',
   type=c('s','l'),
@@ -620,6 +730,9 @@ plot.transition.map <- function
   }
   weight[is.na(weight)] <- 0
   par(mar = c(4,3,2,1), cex = 0.8)
-  plota.stacked(risk, weight, xlab = xlab, main = paste('Transition Map for', name),
-                type=type[1], col=ifna(col, plota.colors(ncol(y))) )
+  p.tplot.stacked(risk, weight, xlab = xlab, main = paste('Transition Map for', name),
+                type=type[1], col=ifelse(isnone(col),col, p.tplot.colors(ncol(y))) )
 }
+
+#### END of transition map plotting
+
