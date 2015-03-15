@@ -30,7 +30,10 @@ isnone <- function(var) {
 ##
 iif <- function (cond, truepart, falsepart) {
   # if cond is TRUE then return true part else return falsepart
-  return(ifelse(isnone(cond), falsepart, truepart))
+  if(isnone(cond))
+    return(falsepart)
+  else
+    return(truepart)
 }
 
 ##
@@ -144,14 +147,27 @@ create.new.constraints <- function
     meq       <- const.reorg$meq
   }
   if (isnone(lb)) {
-    lb <- rep(NA, n)
+    lb <- rep(-Inf, n) 
   } else if (length(lb) == 1) {
-    lb <- rep(lb[1], n)
+    lb <- rep(lb[1], n) 
   }
+  if(length(lb) == n)
+    lb.vec <- seq(1, n)
+  
   if (isnone(ub)) {
-    ub <- rep(+Inf, n)
+    ub <- rep(+Inf, n) 
   } else if (length(ub) == 1) {
-    ub <- rep(ub[1], n)
+    ub <- rep(ub[1], n) 
+  }
+  if(length(ub) == n)
+    ub.vec <- seq(1, n)
+  
+  if( isnone(lb.vec) ) {
+    lb.vec <- seq(1, n)
+  }
+   
+  if( isnone(ub.vec) ) {
+    ub.vec <- seq(1, n)
   }
   
   return( list(n = n, mat = const.mat, dir = const.dir, rhs = const.rhs, lb = lb, ub = ub, meq = meq, binary.vec = binary.vec, integer.vec = integer.vec, lb.vec = lb.vec, ub.vec = ub.vec ) )
@@ -188,8 +204,8 @@ add.variables <- function
 (
   n,
   constraints,
-  lb = NA,
-  ub = NA,
+  lb = 0,
+  ub = +Inf,
   lb.vec = NULL,
   ub.vec = NULL,
   binary.vec = NULL,
@@ -202,12 +218,32 @@ add.variables <- function
   if (length(lb) != n) lb <- rep(lb[1], n) }
   
   if (isnone(ub)) { ub <- rep(+Inf, n) } else {
-  if (length(ub) != n) ub = rep(ub[1], n) }
+  if (length(ub) != n) ub <- rep(ub[1], n) }
   
-  if (!isnone(lb.vec)) constraints$lb.vec <- c(constraints$lb.vec, lb.vec)
-  if (!isnone(ub.vec)) constraints$ub.vec <- c(constraints$ub.vec, ub.vec)
-  if (!isnone(binary.vec)) constraints$binary.vec <- c(constraints$binary.vec, binary.vec)
-  if (!isnone(integer.vec)) constraints$integer.vec <- c(constraints$integer.vec, integer.vec)
+  if (!isnone(lb.vec)) 
+    constraints$lb.vec <- c(constraints$lb.vec, lb.vec+constraints$n)
+  else {
+    if(!isnone(constraints$lb.vec))
+      constraints$lb.vec <- c(constraints$lb.vec, seq(constraints$n + 1, constraints$n + n) )
+    else
+    {
+      constraints$lb.vec <- seq(1, constraints$n + n)
+    }
+  }
+  
+  if (!isnone(ub.vec)) 
+    constraints$ub.vec <- c(constraints$ub.vec, ub.vec+constraints$n)
+  else {
+    if(!isnone(constraints$ub.vec))
+      constraints$ub.vec <- c(constraints$ub.vec, seq(constraints$n + 1, constraints$n + n) )
+    else
+    {
+      constraints$ub.vec <- seq(1, constraints$n + n)
+    }
+  }
+  
+  if (!isnone(binary.vec)) constraints$binary.vec <- c(constraints$binary.vec, binary.vec+constraints$n)
+  if (!isnone(integer.vec)) constraints$integer.vec <- c(constraints$integer.vec, integer.vec+constraints$n)
   
   constraints$lb <- c(constraints$lb, lb)
   constraints$ub <- c(constraints$ub, ub)
@@ -404,7 +440,7 @@ portfolio.weighted.return <- function
 }
 
 #### portfolio risk
-portfolio.std.risk <- function(
+portfolio.risk.std <- function(
   weight,
   inp
 ){
@@ -488,7 +524,7 @@ efficient.port.gen <- function(
   rm.index <- is.na(apply(out$weight, 1, sum))
   if(any(rm.index)) out$weight <- out$weight[!rm.index, ]
   out$return <- portfolio.weighted.return(out$weight, inp)
-  out$risk   <- portfolio.std.risk(out$weight, inp)
+  out$risk   <- portfolio.risk.std(out$weight, inp)
   out$name   <- name
   return(out)
 } #### END efficient.port.gen
@@ -497,23 +533,7 @@ efficient.port.gen <- function(
 ###################################################################################
 ######################## some plotting tools for portfolio ########################
 ###################################################################################
-# tplot.legend <- function
-# (
-#   labels,
-#   fill = NULL,
-#   lastobs = NULL,
-#   x = 'topleft',
-#   merge = F,
-#   bty = 'n' 
-#   ...
-# )
-# {
-#   if( !is.null(fill) ) fill <- splstr( as.character(fill) )
-#   labels <- splstr( as.character(labels) )
-#    
-#   legend(x, legend = labels, fill = fill, merge = merge, bty = bty, ...)
-# }
-# 
+
 #### given limits, do a rescaling to make limits wider and make plot nicer
 p.rescale.limits <- function( limits ) {
   scaleH <- 1.2
@@ -535,7 +555,7 @@ efficient.port.plot <- function(
   inp,                          # input data includes symbol,returns
   eff.portfolios,               # a list of different efficient portfolios
                                 # each item must be a list with $weight $return 
-  portfolio.risk.fn = portfolio.std.risk, # the function to calculate the risk defined here    
+  portfolio.risk.fn = portfolio.risk.std, # the function to calculate the risk defined here    
   asset.points = TRUE           # whether plot the scattered asset risk-return points on the same plot
   )
 {
@@ -548,6 +568,7 @@ efficient.port.plot <- function(
   n <- inp$n
   x <- match.fun(portfolio.risk.fn)(diag(n), inp)
   y <- inp$expected.return
+  assetPoints <- list(x=x * scaleRisk, y=y * scaleReturn, symbol=inp$symbols)
   
   # xlim gives the range of risk of all portfolios including 0
   xlim <- range(c( min( sapply(eff.portfolios, function(x) min(match.fun(portfolio.risk.fn)(x$weight,inp))) ),
@@ -577,7 +598,6 @@ efficient.port.plot <- function(
     name <- c(name, iname)
   }
   dataToPlot <- data.frame( x, y, name )
-  assetPoints <- list(x=inp$risk * scaleRisk, y=inp$expected.return * scaleReturn, symbol=inp$symbols)
    
   xyplot(y~x, dataToPlot, groups=name, type="l", lwd=2, 
          par.settings = list(axis.line = list(lwd = 2)), # set axis line width
@@ -597,7 +617,7 @@ efficient.port.plot <- function(
          )
 } ## END eff.portfolio.plot
 
-#### utils for transition map plotting
+#### BEGIN utils for transition map plotting
 ## some helper functions
 p.tplot.format <- function(
   temp,
@@ -610,6 +630,8 @@ p.tplot.format <- function(
                 eprefix ,sep='') )
 }
 
+## private function to generate a series of discernable colors
+#  neighbors do not have the same color
 p.tplot.colors <- function(N) {
   col  <- rev(c('yellow','cyan','magenta','red','gray','green','blue'))
   temp <- list()
@@ -724,14 +746,18 @@ plot.transition.map <- function
 )
 {
   if( is.list(weight) ) {
-    name <- weight$name
-    risk    <- 100 * weight$risk
-    weight    <- weight$weight
+    name   <- weight$name
+    risk   <- weight$risk
+    weight <- weight$weight
   }
   weight[is.na(weight)] <- 0
   par(mar = c(4,3,2,1), cex = 0.8)
+  if(isnone(col)) col <- p.tplot.colors(ncol(weight))
+  idxOrder <- order(risk)
+  risk <- risk[idxOrder]
+  weight <- weight[idxOrder, ]
   p.tplot.stacked(risk, weight, xlab = xlab, main = paste('Transition Map for', name),
-                type=type[1], col=ifelse(isnone(col),col, p.tplot.colors(ncol(y))) )
+                type=type[1], col=col )
 }
 
 #### END of transition map plotting
