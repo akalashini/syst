@@ -556,11 +556,13 @@ efficient.port.plot <- function(
   eff.portfolios,               # a list of different efficient portfolios
                                 # each item must be a list with $weight $return 
   portfolio.risk.fn = portfolio.risk.std, # the function to calculate the risk defined here    
+  title        = "",
   asset.points = TRUE           # whether plot the scattered asset risk-return points on the same plot
   )
 {
   # plot the efficient frontier
-  
+  if(isnone(title) | title == "")
+    title <- as.character( substitute(portfolio.risk.fn) )
   
   scaleReturn <- 100
   scaleRisk   <- 100
@@ -599,11 +601,11 @@ efficient.port.plot <- function(
   }
   dataToPlot <- data.frame( x, y, name )
    
-  xyplot(y~x, dataToPlot, groups=name, type="l", lwd=2, 
+  xyplot(y~x, dataToPlot, groups=name, type="l", lwd=2, main=title,
          par.settings = list(axis.line = list(lwd = 2)), # set axis line width
          factor = 5, 
          scales = list(tck=c(1,0), x=list(font=2,cex=1.1,limits=xlim), y=list(font=2,cex=1.1,limits=ylim)), # axis font size and bold face
-         auto.key = list(points = F, lines = F, rectangles = T, columns=1 , space="inside",  x = .75, y=.9, corner = c(0,1), border = FALSE),  
+         auto.key = list(points = F, lines = T, rectangles = F, columns=1 , space="inside",  x = .6, y=.4, corner = c(0,1), border = FALSE),  
          xlab=list(label="Risk",fontsize=14, font=2),
          ylab =list(label= "Return(%)",fontsize=14, font=2), 
          panel = function(...) 
@@ -711,14 +713,14 @@ p.tplot.stacked <- function
     #axis(2, las = 1)
     #x = unclass(as.POSIXct(x))
   }
-  mtext('Allocation %', side = 2,line = 3, cex = par('cex'))
-  mtext(xlab, side = 1,line = 2, cex = par('cex'))
+  mtext('Allocation %', side = 2,line = 2, cex = par('cex'))
+  mtext(xlab,           side = 1,line = 2, cex = par('cex')) 
   if( type[1] == 'l' ) {
     prep.x = c(x[1], x, x[length(x)])
     for( y in y1 ) {
       for (i in ncol(y) : 1) {
         prep.y = c(0, rowSums(y[, 1 : i, drop = FALSE]), 0)
-        polygon(prep.x, prep.y, col = col[i], border = NA, angle = 90)
+        polygon(prep.x, prep.y, col = col[i], border = NA, angle = 90 )
       }
     }
   } else {
@@ -731,7 +733,7 @@ p.tplot.stacked <- function
       }
     }
   }
-  p.tplot.legend(colnames(y), col, cex = par('cex'))
+  p.tplot.legend(colnames(y), col, cex = par('cex')) 
 }
 
 #### BEGIN plot transition map
@@ -741,8 +743,8 @@ plot.transition.map <- function
   risk,      # a vector
   xlab = 'Risk',
   name = '',
-  type=c('s','l'),
-  col = NA
+  type = "l",
+  col  = NA
 )
 {
   if( is.list(weight) ) {
@@ -762,3 +764,129 @@ plot.transition.map <- function
 
 #### END of transition map plotting
 
+
+###############################################################################
+######## QP (Quadratic Programming) 
+###############################################################################
+optimize.QP <- function
+( 
+  Hmat,                # objective function H
+  fvec,                # f vec
+  const.mat,           # constraint matrix, each row is a constraint
+  const.dir,           # direction, "=", ">=" "<=" etc
+  const.rhs,           # rhs
+  binary.vec  = NA,    # index of which vars are binary
+  lb     = -Inf,       # lower bound 
+  ub     = +Inf,       # upper bound   
+  factorized=FALSE
+)
+{
+  require(quadprog)
+  ## input conventions please refer to Mathworks:
+  ## min { 1/2 t(x) * H * x + t(f)*x }
+  ## constrainted by:
+  ## Ax >,<,= b # this does not matter here since we will reorganize to be = or >= 
+  ## these input will be revised to conform to the input requirement of quadprog package
+  
+  # reorganize the constraints so that the first #meq have "=" constraints
+  # and the rest are ">=" constraints
+  constr <- p.reorg.constraints( const.mat, const.dir, const.rhs )
+  meq    <- constr$meq
+  Amat   <- t(constr$mat)
+  bvec   <- constr$rhs
+  
+  # deal with lower and upper bounds
+  if(!isnone(fvec)) n <- length(fvec)
+  else n <- nrow( Hmat)  
+  if( length(lb) == 1 ) lb <- rep(lb, n)
+  if( length(ub) == 1 ) ub <- rep(ub, n)
+  
+  lb[is.na(lb) | is.null(lb) | is.nan(lb) ] <- -Inf
+  ub[is.na(ub) | is.null(ub) | is.nan(ub) ] <- +Inf
+   
+  index <- which( ub < +Inf )
+  if( length(index) > 0 ) {
+    bvec <- c(bvec, -ub[index])
+    Amat <- cbind(Amat, -diag(n)[, index])
+  }
+  
+  index <- which( lb > -Inf )
+  if( length(index) > 0 ) {
+    bvec <- c(bvec, lb[index])
+    Amat <- cbind(Amat, diag(n)[, index])
+  }
+  
+  rst <- list()
+  
+  if(isnone(binary.vec)) {
+    #qp.data.final = solve.QP.remove.equality.constraints(Dmat, dvec, Amat, bvec, meq)
+    Dmat <- Hmat
+    dvec <- -fvec
+    #dvec = qp.data.final$dvec
+    #Amat = qp.data.final$Amat
+    #bvec = qp.data.final$bvec
+    #meq = qp.data.final$meq
+    sol = try(solve.QP(Dmat, dvec, Amat, bvec, meq, factorized),TRUE)
+    if(inherits(sol, 'try-error')) {
+      ok = F
+      sol = list()
+    } else {
+      tol = 1e-3
+      ok = T
+      check = sol$solution %*% Amat - bvec
+      if(meq > 0) ok = ok & all(abs(check[1:meq]) <= tol)
+      ok = ok & all(check[-c(1:meq)] > -tol)
+    }
+#     if(!ok) {
+#       require(kernlab)
+#       index.constant.variables = which(!is.na(qp.data.final$solution))
+#       if( len(index.constant.variables) > 0 ) {
+#         Amat1 = Amat[,1:ncol(Amat1)]
+#         bvec1 = bvec[1:ncol(Amat1)]
+#         lb = lb[-index.constant.variables]
+#         ub = ub[-index.constant.variables]
+#       }
+#       sv = ipop(c = matrix(-dvec), H = Dmat, A = t(Amat1),
+#                 b = bvec1, l = ifna(lb,-100), u = ifna(ub,100),
+#                 r = c(rep(0,meq), rep(100, len(bvec1) - meq))
+#       )
+#       sol$solution = primal(sv)
+#     }
+#    x = qp.data.final$solution
+#    x[qp.data.final$var.index] = sol$solution
+    rst$Sol <- sol$solution
+  } else {
+#     qp_data = qp_new(binary.vec, Dmat = Dmat, dvec = dvec,
+#                      Amat=Amat, bvec=bvec, meq=meq, factorized=factorized)
+#     sol = binary_branch_bound(binary.vec, qp_data, qp_solve,
+#                               control = bbb_control(silent=T, branchvar='max', searchdir='best' ))
+#     qp_delete(qp_data)
+#     sol$value = sol$fmin
+#     sol$solution = sol$xmin
+  }
+  return(rst)
+}
+
+
+
+optimize.QP.wrap <- function
+(
+  direction,          # "min" or "max"
+  objective.mat,      # objective function: mat part ( 2nd order part )
+  objective.vec,      # objective function: vec part ( 1st order part )
+  constraints         # constraint list  
+) {
+  sol <- optimize.QP(  
+    objective.mat,
+    objective.vec,
+    constraints$mat,
+    constraints$dir,
+    constraints$rhs,
+    constraints$binary.vec,
+    constraints$lb,
+    constraints$ub,
+    factorized=FALSE )
+  return(sol)
+}
+
+#### END Quadratic Programming basic interface

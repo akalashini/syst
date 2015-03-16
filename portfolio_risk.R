@@ -181,3 +181,21 @@ MinMADPortfolio <- function
   return(sol)
 }
 
+
+###############################################################################
+#### Minimize portfolio standard deviation
+###############################################################################
+MinStdPortfolio <- function
+(
+  inp,
+  constraints = NULL
+) {
+  
+  sol <- optimize.QP.wrap(
+    "min",
+    inp$cov,
+    rep(0, nrow(inp$cov)),
+    constraints )
+  
+  return(sol)
+}
