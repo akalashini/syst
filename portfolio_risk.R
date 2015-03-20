@@ -30,7 +30,7 @@ MinMaxLossPortfolio <- function
   #     n
   #     hist.returns: nXT matrix, total T scenarios
   #     
-  n  <- inp$n
+  n  <- ncol(constraints$mat)
   nt <- nrow(inp$hist.returns)
   
   f.obj <- c(rep(0, n), 1)
@@ -151,7 +151,8 @@ MinMADPortfolio <- function
   #     n
   #     hist.returns: nXT matrix, total T scenarios
   #     
-  n  <- inp$n
+  n0 <- ncol(inp$hist.returns)
+  n  <- ncol(constraints$mat) #inp$n
   nt <- nrow(inp$hist.returns)
   
   f.obj <- c(rep(0, n), (1/nt) * rep(1, 2 * nt) )
@@ -163,7 +164,7 @@ MinMADPortfolio <- function
   # see note for the compact format of constraints
   # source("./utils.R") to use repmat
   cons.mat <- cbind( matrix(0, nt, n), -diag(nt), diag(nt) )
-  cons.mat[, 1:n] <- inp$hist.returns - repmat(colMeans(inp$hist.returns), nt, 1 )
+  cons.mat[, 1:n0] <- inp$hist.returns - repmat(colMeans(inp$hist.returns), nt, 1 )
   
   cons.dir <- rep("=", nt)
   cons.rhs <- rep(0, nt)
@@ -174,7 +175,7 @@ MinMADPortfolio <- function
                            constr )
    
   sol$Sol <- sol$Sol[1:n]
-  sol$Return <- sum(sol$Sol * inp$expected.return )
+  #sol$Return <- sum(sol$Sol * inp$expected.return )
   sRisk <- portfolio.risk.mad( sol$Sol, inp )
   sol$Risk <- sRisk[1]
   
@@ -190,6 +191,11 @@ MinStdPortfolio <- function
   inp,
   constraints = NULL
 ) {
+  
+  # in case matrix is not pisitive definite make it positive definite
+  if(!is.positive.definite(inp$cov, method = 'chol')) {
+    inp$cov <- make.positive.definite(inp$cov, 0.000000001)
+  }
   
   sol <- optimize.QP.wrap(
     "min",

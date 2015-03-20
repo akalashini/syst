@@ -266,6 +266,23 @@ delete.constraints <- function
 ####
 #### END constraint utils
 
+## -----
+
+## reshape the input var into x = Long - Short
+## 
+p.represent.var.long.short <- function( inp )
+{
+  inp$symbols <- c(inp$symbols, inp$symbols)
+  inp$n <- 2*inp$n
+  inp$hist.returns <- cbind(inp$hist.returns, -inp$hist.returns)
+  inp$expected.return <- c(inp$expected.return, -inp$expected.return)
+  inp$risk <- c(inp$risk, inp$risk)
+  inp$corr <- cbind( rbind(inp$corr, -inp$corr), rbind(-inp$corr, inp$corr) )
+  inp$cov  <- cbind( rbind(inp$cov, -inp$cov), rbind(-inp$cov, inp$cov) )
+  
+  return(inp)
+}
+
 ######## linear programming ######
 optimize.LP <- function
 (
@@ -284,11 +301,18 @@ optimize.LP <- function
 {
   # linear programming tool with bounds and binary
   # a wrapper on lpSolveAPI, so requires package lpSolveAPI
+  lapply(c('lpSolve','lpSolveAPI','logging'), require, character.only=T)
   
-  n <- length(objective.vec)
+  n0 <- length(objective.vec)
   iDim <- dim(const.mat) 
   m <- iDim[1]
+  n <- iDim[2]
   # n variables, m rows of constraints
+  if(n0 < n)
+  {
+    # if
+    objective.vec <- c( objective.vec, rep(0, n-n0) )
+  }
   
   lprec <- make.lp(m, n)
   
@@ -357,13 +381,14 @@ optimize.LP <- function
   set.objfn(lprec, objective.vec)
   
   # ready to optimize
-  print(lprec)
+  #logdebug(lprec) # looks like this does not work
+  #print(lprec)
   
   status <- solve(lprec)
   if(status==0) {
-    cat("**LP Optimizing Successful.\n")
+    logdebug("LP Optimizing Successful.\n")
   } else {
-    cat("LP Optimizing Failed.\n")
+    logwarn("**LP Optimizing Failed.\n")
     rm(lprec)
     return(NULL)
   }
@@ -486,10 +511,6 @@ efficient.port.gen <- function(
     inp$cov.temp <- temp
   }
   
-  if(!is.positive.definite(inp$cov.temp, method = 'chol')) {
-    inp$cov.temp <- make.positive.definite(inp$cov.temp, 0.000000001)
-  }
-  
   if(npoints<2) npoints <- 2
 
   # results saved in out
@@ -500,7 +521,7 @@ efficient.port.gen <- function(
   
   # get portfolio with max return
   out$weight[npoints, ] <- max.return.portfolio(inp, constraints)
-  # get portfolio with min risk
+  # get portfolio with min risk 
   solMinRisk <- match.fun(min.risk.fn)(inp, constraints)
   out$weight[1, ]       <- solMinRisk$Sol
   
@@ -560,6 +581,7 @@ efficient.port.plot <- function(
   asset.points = TRUE           # whether plot the scattered asset risk-return points on the same plot
   )
 {
+  require(lattice)
   # plot the efficient frontier
   if(isnone(title) | title == "")
     title <- as.character( substitute(portfolio.risk.fn) )
